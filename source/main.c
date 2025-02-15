@@ -171,14 +171,24 @@ void nbt_adt_task(void *arg)
         goto cleanup;
     }
 
-    do
+    // Give semaphore in order to execute an initial read/write without a button-press
+    xSemaphoreGive(btn_irq_sleeper);
+
+    while (1)
     {
+        // Wait for button interrupt
+        while (xSemaphoreTake(btn_irq_sleeper, portMAX_DELAY) != pdPASS)
+            ;
+
         // Use NBT command abstraction
         status = nbt_select_nbt_application(&nbt);
         if (ifx_error_check(status))
         {
-            ifx_logger_log(ifx_logger_default, LOG_TAG, IFX_LOG_ERROR, "Could not select NBT application");
-            goto cleanup;
+            // In ADT mode, the NBT's communication states are mutually exclusive.
+            // Thus, the I2C communication is blocked as long as an NFC field is present.
+            // For this example, this means that the host MCU will be unable to communicate via I2C as long as the mobile phone remains tapped to the NBT'S NFC antenna.
+            ifx_logger_log(ifx_logger_default, LOG_TAG, IFX_LOG_WARN, "Could not select NBT application (NFC field still present?)!");
+            continue;
         }
 
         // Read LED state from proprietary file 1
@@ -186,8 +196,8 @@ void nbt_adt_task(void *arg)
         status = nbt_read_file(&nbt, NBT_FILEID_PROPRIETARY1, 0U, 1U, file_content);
         if (ifx_error_check(status))
         {
-            ifx_logger_log(ifx_logger_default, LOG_TAG, IFX_LOG_ERROR, "Could not read NBT proprietary file 1");
-            goto cleanup;
+            ifx_logger_log(ifx_logger_default, LOG_TAG, IFX_LOG_WARN, "Could not read NBT proprietary file 1");
+            continue;
         }
 
         // Update LED based on given configuration
@@ -208,14 +218,10 @@ void nbt_adt_task(void *arg)
         status = nbt_write_file(&nbt, NBT_FILEID_PROPRIETARY2, 0U, update_data, sizeof(update_data));
         if (ifx_error_check(status))
         {
-            ifx_logger_log(ifx_logger_default, LOG_TAG, IFX_LOG_ERROR, "Could not write NBT proprietary file 2");
-            goto cleanup;
+            ifx_logger_log(ifx_logger_default, LOG_TAG, IFX_LOG_WARN, "Could not write NBT proprietary file 2");
+            continue;
         }
-
-        // Wait for button interrupt
-        while (xSemaphoreTake(btn_irq_sleeper, portMAX_DELAY) != pdPASS)
-            ;
-    } while (1);
+    }
 
 cleanup:
     cyhal_i2c_free(&i2c_device);

@@ -16,6 +16,7 @@
 #include "infineon/ifx-protocol.h"
 #include "infineon/ifx-apdu.h"
 #include "infineon/ifx-apdu-protocol.h"
+#include "infineon/ifx-t1prime.h"
 #include "infineon/nbt-apdu.h"
 #include "infineon/nbt-cmd-config.h"
 #include "infineon/nbt-cmd.h"
@@ -185,6 +186,16 @@ ifx_status_t nbt_configure(nbt_cmd_t *nbt, const struct nbt_configuration *confi
     }
     ifx_apdu_response_destroy(nbt->response);
 
+
+    // Software power-on reset S(POR)
+    ifx_logger_log(ifx_logger_default, LOG_TAG, IFX_LOG_INFO, "Perform software power-on reset S(POR) after setting configuration for use case.");
+    status = ifx_t1prime_s_por(nbt->protocol);
+    if (ifx_error_check(status))
+    {
+        ifx_logger_log(ifx_logger_default, LOG_TAG, IFX_LOG_ERROR, "Could not perform a successful software power-on reset S(POR)");
+        return status;
+    }
+
     return IFX_SUCCESS;
 }
 
@@ -229,7 +240,7 @@ ifx_status_t nbt_read_file(nbt_cmd_t *nbt, enum nbt_fileid file_id, uint16_t off
     // Actually read file in chunks
     for (size_t chunk_offset = 0U; chunk_offset < length; chunk_offset += 0xFFU)
     {
-        uint8_t chunk_len = ((length - (offset + chunk_offset)) < 0xFFU) ? (length - (offset + chunk_offset)) : 0xFFU;
+        uint8_t chunk_len = ((length - chunk_offset) < 0xFFU) ? (length - chunk_offset) : 0xFFU;
         status = nbt_read_binary(nbt, offset + chunk_offset, chunk_len);
         ifx_apdu_destroy(nbt->apdu);
         if (ifx_error_check(status))
@@ -296,7 +307,7 @@ ifx_status_t nbt_write_file(nbt_cmd_t *nbt, enum nbt_fileid file_id, uint16_t of
     // Actually write file in chunks
     for (size_t chunk_offset = 0U; chunk_offset < length; chunk_offset += 0xFFU)
     {
-        uint8_t chunk_len = ((length - (offset + chunk_offset)) < 0xFFU) ? (length - (offset + chunk_offset)) : 0xFFU;
+        uint8_t chunk_len = ((length - chunk_offset) < 0xFFU) ? (length - chunk_offset) : 0xFFU;
         status = nbt_update_binary(nbt, offset + chunk_offset, chunk_len, (uint8_t *) (data + chunk_offset));
         ifx_apdu_destroy(nbt->apdu);
         if (ifx_error_check(status))
